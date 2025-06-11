@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  
+  <meta charset="UTF-8">
+  <title>Gestion des Cartes</title>
+ 
+  <link rel="stylesheet" href="admincarte.css">
+  
+</head>
+<body>
+  <!-- Barre de navigation -->
+  <nav class="navbar">
+    <div class="logo">🧠 HistoLearn </div>
+    <div class="nav-links">
+      <a id="navQuestions" href="dmin_questions.html">Questions</a>
+      <a id="navCartes" href="admincarte.html">Cartes</a>
+      <a id="logoutBtn">Déconnexion</a>
+    </div>
+  </nav>
+
+  
+  <header>
+    <h1>Gestion des Cartes Flash</h1>
+  </header>
+
+  
+  <main>
+    
+    <section id="formSection">
+      <h2>📝 Ajouter / Modifier une Carte</h2>
+     
+      <textarea id="recto" placeholder="Contenu Recto"></textarea>
+      
+      <textarea id="verso" placeholder="Contenu Verso"></textarea>
+     
+      <input type="number" id="idGroupe" placeholder="ID du Groupe">
+      <div id="buttons">
+        
+        <button onclick="submitCard()">Soumettre</button>
+        
+        <button onclick="clearForm()">Réinitialiser</button>
+      </div>
+      <!-- affichage d'état -->
+      <p id="result"></p>
+    </section>
+
+    
+    <section id="listSection">
+      <h2>📋 Liste des Cartes</h2>
+      
+      <input type="text" id="searchInput" placeholder="🔍 Rechercher..." oninput="filterCards()">
+      <!-- Liste des cartes -->
+      <ul id="cardList"></ul>
+    </section>
+  </main>
+
+  <script>
+    // api supabase
+    const URL = "https://sxrjryidhsxsrystzgsx.supabase.co";
+    const APIKEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN4cmpyeWlkaHN4c3J5c3R6Z3N4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDcwMDY4MjAsImV4cCI6MjA2MjU4MjgyMH0.AP87NoUy-F51rDVhe-OLqq4K73hsjtZqqNegA1S4GDQ";
+    // recupe token
+    const token = localStorage.getItem("token");
+
+    // verification d'auth
+    if (!token) {
+      alert("Token manquant. Veuillez vous reconnecter.");
+      window.location.href = "dmin_login.html";
+    }
+
+
+    //  stock l'id de la carte en cours d'édition
+    let editingCardId = null;
+    // liste des cartes
+    let cardsList = [];
+
+    
+    //  créer les en-têtes HTTP avec le token pour appleler supabase en securite
+    function jsonHeaders() {
+      return {
+        "Content-Type": "application/json",
+        "apikey": APIKEY,
+        "Authorization": `Bearer ${token}`
+      };
+    }
+
+    //  afficher des messages 
+    function showMessage(message, type = 'info') {
+      const resultEl = document.getElementById("result");
+      resultEl.textContent = message;
+      resultEl.className = type;
+    }
+
+    //  soumettre une carte aj/mod
+    async function submitCard() {
+      // Recuperation  valeurs du formulaire
+      const recto = document.getElementById("recto").value.trim();
+      const verso = document.getElementById("verso").value.trim();
+      const idGroupe = parseInt(document.getElementById("idGroupe").value);
+      
+      // validation des champs
+      if (!recto || !verso || isNaN(idGroupe)) {
+        showMessage("❌ Tous les champs sont requis.", 'error');
+        return;
+      }
+
+      // mess de conf
+      const action = editingCardId ? 'modifier' : 'ajouter';
+      const confirmMessage = `Voulez-vous vraiment ${action} cette carte?\n\nRecto: ${recto}\nVerso: ${verso}\nGroupe: ${idGroupe}`;
+      
+      if (!confirm(confirmMessage)) {
+        showMessage("❌ Opération annulée.", 'info');
+        return;
+      }
+
+      try {
+        // verif/cree de groupe de cart
+        await createGroupIfNeeded(idGroupe);
+        
+        // recuperation des donnee
+        const body = JSON.stringify({ contenuRecto: recto, contenuVerso: verso, idGroupe });
+        
+        // Choix de l'URL et de la méthode selon si on édite ou crée
+        const url = editingCardId ? `${URL}/rest/v1/card?idCard=eq.${editingCardId}` : `${URL}/rest/v1/card`;
+        const method = editingCardId ? "PATCH" : "POST";
+
+        showMessage("⏳ Enregistrement en cours...", 'info');
+
+        // Envoi de la requête à l'API
+        const res = await fetch(url, {
+          method,
+          headers: jsonHeaders(),
+          body
+        });
+
+        if (res.ok) {
+          // Message  succès
+          const successMessage = editingCardId 
+            ? "✅ Carte modifiée avec succès!" 
+            : "✅ Carte ajoutée avec succès!";
+          showMessage(successMessage, 'success');
+          clearForm();
+          await fetchCards();
+          
+          // Scroll vers le haut pour voir le message
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        } else {
+          throw new Error(await res.text());
+        }
+      } catch (error) {
+        console.error("Erreur:", error);
+        showMessage(`❌ Erreur lors de l'enregistrement: ${error.message}`, 'error');
+      }
+    }
+      
+    // renitioalisation de formulaire
+    function clearForm() {
+      document.getElementById("recto").value = "";
+      document.getElementById("verso").value = "";
+      document.getElementById("idGroupe").value = "";
+      editingCardId = null;
+    }
+
+    // chargement des cartes
+    async function fetchCards() {
+      try {
+        showMessage("⏳ Chargement des cartes...", 'info');
+        const res = await fetch(`${URL}/rest/v1/card?select=*`, {
+          headers: jsonHeaders()
+        });
+        
+        if (!res.ok) throw new Error("Erreur de chargement");
+        
+        cardsList = await res.json();
+        renderCards(cardsList);
+        showMessage(`✅ ${cardsList.length} cartes chargées`, 'success');
+      } catch (error) {
+        console.error("Erreur:", error);
+        showMessage("❌ Erreur lors du chargement des cartes", 'error');
+      }
+    }
+
+    // affichage des cartes
+    function renderCards(cards) {
+      const list = document.getElementById("cardList");
+      list.innerHTML = "";
+      
+      if (cards.length === 0) {
+        list.innerHTML = "<li>Aucune carte disponible</li>";
+        return;
+      }
+      
+      // Ccreation element b pour chaque nouvelle ligne de cart ( dans la liste)
+      cards.forEach(card => {
+        const li = document.createElement("li");
+        li.innerHTML = `
+          <b>${card.contenuRecto}</b> | ${card.contenuVerso}
+          <div>
+            <button onclick="editCard(${card.idCard})">✏️</button>
+            <button onclick="deleteCard(${card.idCard})">🗑️</button>
+          </div>
+        `;
+        list.appendChild(li);
+      });
+    }
+
+    // la recherche
+    function filterCards() {
+      const keyword = document.getElementById("searchInput").value.toLowerCase();
+      const filtered = cardsList.filter(c =>
+        c.contenuRecto.toLowerCase().includes(keyword) ||
+        c.contenuVerso.toLowerCase().includes(keyword)
+      );
+      renderCards(filtered);
+    }
+
+    // edition des cartes
+    async function editCard(id) {
+      try {
+        // recupiration de l'id de la cart
+        const res = await fetch(`${URL}/rest/v1/card?idCard=eq.${id}`, { 
+          headers: jsonHeaders() 
+        });
+        
+        if (!res.ok) throw new Error("Erreur de chargement");
+        
+        // le formulaire avec la cart appropriee a l'id 
+        const card = (await res.json())[0];
+        document.getElementById("recto").value = card.contenuRecto;
+        document.getElementById("verso").value = card.contenuVerso;
+        document.getElementById("idGroupe").value = card.idGroupe;
+        editingCardId = card.idCard;
+        showMessage("✏️ Mode édition activé. Modifiez la carte et cliquez sur Soumettre.", 'info');
+        
+        // scrol
+        document.getElementById('formSection').scrollIntoView({ behavior: 'smooth' });
+      } catch (error) {
+        console.error("Erreur:", error);
+        showMessage("❌ Erreur lors du chargement de la carte", 'error');
+      }
+    }
+
+    // suppretion
+    async function deleteCard(id) {
+      // Recherche de la carte à supprimer
+      const card = cardsList.find(c => c.idCard === id);
+      if (!card) return;
+      
+      // mess de conf
+      const confirmMessage = `Voulez-vous vraiment supprimer cette carte?\n\nRecto: ${card.contenuRecto}\nVerso: ${card.contenuVerso}\nGroupe: ${card.idGroupe}`;
+      
+      if (!confirm(confirmMessage)) {
+        showMessage("❌ Suppression annulée.", 'info');
+        return;
+      }
+
+      try {
+        showMessage("⏳ Suppression en cours...", 'info');
+        // requet de supp
+        const res = await fetch(`${URL}/rest/v1/card?idCard=eq.${id}`, {
+          method: "DELETE",
+          headers: jsonHeaders()
+        });
+
+        if (res.ok) {
+          showMessage("✅ Carte supprimée avec succès!", 'success');
+          await fetchCards();
+        } else {
+          throw new Error(await res.text());
+        }
+      } catch (error) {
+        console.error("Erreur:", error);
+        showMessage(`❌ Erreur lors de la suppression: ${error.message}`, 'error');
+      }
+    }
+
+    // creation de nouveau groupe
+    async function createGroupIfNeeded(idGroupe) {
+      // verification si id exist
+      const check = await fetch(`${URL}/rest/v1/groupcard?idGroupe=eq.${idGroupe}`, {
+        headers: jsonHeaders()
+      });
+
+      const existing = await check.json();
+      if (existing.length > 0) {
+        console.log("Groupe déjà existant.");
+        return;
+      }
+
+      // creation si non
+      const body = JSON.stringify({
+        idGroupe: idGroupe,
+        titreGroupe: `Groupe ${idGroupe}`,
+        idJFlashCard: 1
+      });
+
+      const res = await fetch(`${URL}/rest/v1/groupcard`, {
+        method: "POST",
+        headers: {
+          ...jsonHeaders(),
+          Prefer: "return=representation"
+        },
+        body: body
+      });
+
+      if (!res.ok) {
+        const error = await res.text();
+        throw new Error("Erreur lors de la création du groupe : " + error);
+      }
+
+      console.log("Groupe créé.");
+
+      // virification de groupe esQ visible
+      let attempts = 0;
+      while (attempts < 5) {
+        const verify = await fetch(`${URL}/rest/v1/groupcard?idGroupe=eq.${idGroupe}`, {
+          headers: jsonHeaders()
+        });
+
+        const checkData = await verify.json();
+        if (checkData.length > 0) {
+          console.log("Groupe confirmé visible.");
+          return;
+        }
+
+        await new Promise(r => setTimeout(r, 200));
+        attempts++;
+      }
+
+      throw new Error("Groupe non visible après création.");
+    }
+
+    // deconnexion
+    function logout() {
+      if (confirm("Voulez-vous vraiment vous déconnecter ?")) {
+        // supp de token
+        localStorage.removeItem("token");
+        
+        
+        window.location.href = "dmin_login.html";
+      }
+    }
+
+    // Initialisation au chargement de la page
+    document.addEventListener("DOMContentLoaded", () => {
+      // Ajout du gestionnaire d'événement pour le bouton de déconnexion
+      document.getElementById("logoutBtn").addEventListener("click", logout);
+      
+      // Chargement initial des cartes
+      fetchCards();
+    });
+  </script>
+</body>
+</html>

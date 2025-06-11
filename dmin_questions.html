@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Questions - Expert</title>
+  
+  <link rel="stylesheet" href="dmin_questions.css" />
+</head>
+<body>
+ 
+  <nav class="navbar">
+    <div class="logo">🧠 HistoLearn </div>
+    <div class="nav-links">
+     
+      <a id="navQuestions" href="#">Questions</a>
+      <a id="navCartes" href="#">Cartes</a>
+      <a id="logoutBtn" >Déconnexion</a>
+    </div>
+  </nav>
+
+
+  <header>
+    <h1>La Gestion des Questions</h1>
+  </header>
+
+ 
+  <main>
+    
+    <section id="formSection">
+      <h2>✍️ Formulaire Question</h2>
+      
+      
+      <textarea id="questionText" placeholder="Question"></textarea>
+      
+     
+      <input id="hint" type="text" placeholder="Réponse Complète" />
+      
+      
+      <input type="number" id="difficulty" placeholder="Difficulté (ex: 1, 2, 3)" />
+      
+     
+      <input type="number" id="id_level" placeholder="ID Niveau" />
+
+   
+      <div id="answersContainer">
+        <h3>Réponses (cocher la bonne réponse)</h3>
+        
+        
+        <div class="answer-input">
+          
+          <input type="radio" name="correctAnswer" value="0" checked />
+          
+          <input type="text" class="answer-text" placeholder="Réponse 1" />
+        </div>
+        <div class="answer-input">
+          <input type="radio" name="correctAnswer" value="1" />
+          <input type="text" class="answer-text" placeholder="Réponse 2" />
+        </div>
+        <div class="answer-input">
+          <input type="radio" name="correctAnswer" value="2" />
+          <input type="text" class="answer-text" placeholder="Réponse 3" />
+        </div>
+        <div class="answer-input">
+          <input type="radio" name="correctAnswer" value="3" />
+          <input type="text" class="answer-text" placeholder="Réponse 4" />
+        </div>
+      </div>
+
+      
+      <div id="buttons">
+        
+        <button onclick="submitQuestion()">Soumettre</button>
+        
+        <button onclick="clearForm()">Réinitialiser</button>
+      </div>
+
+      <!-- pour l'affichage des mess -->
+      <p id="result" aria-live="polite"></p>
+    </section>
+
+    <!-- ////// -->
+    <section id="listSection">
+      <h2>📜 Liste des Questions</h2>
+      
+      
+      <input
+        type="text"
+        id="searchInput"
+        placeholder="🔍 Rechercher une question..."
+        oninput="filterQuestions()"
+      />
+      
+      <!-- liste des questions -->
+      <ul id="historyList" tabindex="0"></ul>
+    </section>
+  </main>
+
+  
+  <script src="auth.js"></script>
+  
+  <script>
+    
+    
+    // lien de base
+    const URL = "https://sxrjryidhsxsrystzgsx.supabase.co";
+    
+    // api pour l'authen a la base
+    const APIKEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN4cmpyeWlkaHN4c3J5c3R6Z3N4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDcwMDY4MjAsImV4cCI6MjA2MjU4MjgyMH0.AP87NoUy-F51rDVhe-OLqq4K73hsjtZqqNegA1S4GDQ";
+    
+    // recupirer email de url
+    const params = new URLSearchParams(window.location.search);
+    const email = params.get("email");
+    
+    // recup de teken
+    const token = checkAuth();
+    
+    // var de mode edition
+    let editingQuestionId = null;
+    
+    // tableu contien les ques recuperer
+    let questionsList = [];
+    
+    // tableu pour stocker les reponse lorsque de l'edition
+    let currentQuestionAnswers = [];
+    
+    // pour l'aafiichage des resultats
+    const resultEl = document.getElementById("result");
+
+    
+    /* genirer les http pour les requets */
+    function jsonHeaders() {
+      return {
+        "Content-Type": "application/json",
+        apikey: APIKEY,
+        Authorization: `Bearer ${token}`,
+      };
+    }
+
+    /**
+     parser le corps d'une réponse HTTP en JSON
+     */
+    async function safeJsonParse(response) {
+      const text = await response.text();
+      if (!text.trim()) {
+        return null;
+      }
+      try {
+        return JSON.parse(text);
+      } catch (error) {
+        console.error('Erreur de parsing JSON:', text);
+        throw new Error('Réponse JSON invalide du serveur');
+      }
+    }
+
+  
+    async function submitQuestion() {
+      try {
+        // recupiration les donnee
+        const q = document.getElementById("questionText").value.trim();
+        const h = document.getElementById("hint").value.trim();
+        const d = parseInt(document.getElementById("difficulty").value);
+        const l = parseInt(document.getElementById("id_level").value);
+        const answers = getAnswers(); // Récupère les réponses du formulaire
+
+        // verification les champs obligatoire
+        if (!q) return (resultEl.textContent = "⚠️ Veuillez saisir une question.");
+        if (answers.length < 2) return (resultEl.textContent = "⚠️ Minimum 2 réponses valides requises.");
+        if (!answers.some(a => a.isCorrect)) return (resultEl.textContent = "⚠️ Cocher une réponse correcte.");
+        if (isNaN(d)) return (resultEl.textContent = "⚠️ Difficulté invalide.");
+        if (isNaN(l)) return (resultEl.textContent = "⚠️ ID Niveau invalide.");
+
+        resultEl.textContent = "⏳ Envoi en cours...";
+        let qid; // id de ques
+
+        // esQ edit ou nouvelle ques
+        if (editingQuestionId) {
+
+          qid = editingQuestionId;
+          
+          // mettre a jours les infos
+          const updateQuestion = await fetch(`${URL}/rest/v1/question?idQuestion=eq.${qid}`, {
+            method: "PATCH",
+            headers: jsonHeaders(),
+            body: JSON.stringify({ 
+              questionText: q, 
+              hintText: h, 
+              difficultyLevel: d, 
+              idLevel: l 
+            }),
+          });
+          
+          if (!updateQuestion.ok) {
+            const errorText = await updateQuestion.text();
+            throw new Error(`Erreur mise à jour question: ${updateQuestion.status} - ${errorText}`);
+          }
+          
+          // modifier les enciens infos
+          // supp de ttables question_reponse
+          await fetch(`${URL}/rest/v1/question_reponse?idQuestion=eq.${qid}`, {
+            method: "DELETE",
+            headers: jsonHeaders()
+          });
+          
+          // supp de la tabke des reponses
+          await fetch(`${URL}/rest/v1/reponse?idQuestion=eq.${qid}`, {
+            method: "DELETE",
+            headers: jsonHeaders()
+          });
+          
+          // ajouter les nouvelles reponses
+          const createdAnswers = [];
+          for (let i = 0; i < answers.length; i++) {
+            const answer = answers[i];
+            const createResponse = await fetch(`${URL}/rest/v1/reponse`, {
+              method: "POST",
+              headers: { ...jsonHeaders(), "Prefer": "return=representation" },
+              body: JSON.stringify({ 
+                answerText: answer.text, 
+                idQuestion: qid 
+              }),
+            });
+            
+            if (!createResponse.ok) {
+              throw new Error(`Erreur création réponse ${i + 1}`);
+            }
+            
+            // Rrecup l'id de la renpuvele reponses
+            const newAnswerData = await safeJsonParse(createResponse);
+            if (newAnswerData && newAnswerData[0]) {
+              createdAnswers.push({
+                idAnswer: newAnswerData[0].idAnswer,
+                isCorrect: answer.isCorrect
+              });
+            }
+          }
+          
+          // crer la relation entre la que et la nouvelle reponse
+          const correctAnswer = createdAnswers.find(a => a.isCorrect);
+          if (correctAnswer) {
+            await fetch(`${URL}/rest/v1/question_reponse`, {
+              method: "POST",
+              headers: jsonHeaders(),
+              body: JSON.stringify({ 
+                idQuestion: qid, 
+                idAnswer: correctAnswer.idAnswer 
+              }),
+            });
+          }
+          
+        } else {
+          
+          // crrer la ques
+          const createQuestion = await fetch(`${URL}/rest/v1/question`, {
+            method: "POST",
+            headers: { ...jsonHeaders(), "Prefer": "return=representation" },
+            body: JSON.stringify({ 
+              questionText: q, 
+              hintText: h, 
+              difficultyLevel: d, 
+              idLevel: l 
+            }),
+          });
+          
+          if (!createQuestion.ok) {
+            const errorText = await createQuestion.text();
+            throw new Error(`Erreur création question: ${createQuestion.status} - ${errorText}`);
+          }
+          
+          // Rrecupirer id de ques 
+          const questionData = await safeJsonParse(createQuestion);
+          if (!questionData || !questionData[0] || !questionData[0].idQuestion) {
+            throw new Error("Impossible de récupérer l'ID de la question créée");
+          }
+          
+          qid = questionData[0].idQuestion;
+          
+          // crer tou les reponses
+          const createdAnswers = [];
+          for (let i = 0; i < answers.length; i++) {
+            const answer = answers[i];
+            const createResponse = await fetch(`${URL}/rest/v1/reponse`, {
+              method: "POST",
+              headers: { ...jsonHeaders(), "Prefer": "return=representation" },
+              body: JSON.stringify({ 
+                answerText: answer.text, 
+                idQuestion: qid 
+              }),
+            });
+            
+            if (!createResponse.ok) {
+              throw new Error(`Erreur création réponse ${i + 1}`);
+            }
+            
+            // stocker l'id de chaque reponses
+            const newAnswerData = await safeJsonParse(createResponse);
+            if (newAnswerData && newAnswerData[0]) {
+              createdAnswers.push({
+                idAnswer: newAnswerData[0].idAnswer,
+                isCorrect: answer.isCorrect
+              });
+            }
+          }
+          
+          // crer la relation entre la question et la reonse juste
+          const correctAnswer = createdAnswers.find(a => a.isCorrect);
+          if (correctAnswer) {
+            await fetch(`${URL}/rest/v1/question_reponse`, {
+              method: "POST",
+              headers: jsonHeaders(),
+              body: JSON.stringify({ 
+                idQuestion: qid, 
+                idAnswer: correctAnswer.idAnswer 
+              }),
+            });
+          }
+        }
+
+        // 
+        const actionText = editingQuestionId ? "modifiée" : "créée";
+        resultEl.textContent = `✅ Question ${actionText} avec succès !`;
+        clearForm(); // Vider le formulaire
+        
+        // recharge la liste des question 
+        setTimeout(() => {
+          fetchQuestions();
+        }, 300);
+        
+      } catch (error) {
+        console.error('Erreur complète:', error);
+        resultEl.textContent = `❌ Erreur : ${error.message}`;
+      }
+    }
+
+   //gestion de form
+    
+    //recupirer les reponses et identifier la bonne reponse
+    function getAnswers() {
+      const answerDivs = document.querySelectorAll('.answer-input');
+      
+      // trouver la bonne reponse
+      let correctIndex = [...answerDivs].findIndex(div => 
+        div.querySelector('input[type="radio"]').checked
+      );
+      
+      // tableru pour les reponses
+      return [...answerDivs].map((div, i) => ({
+        text: div.querySelector('.answer-text').value.trim(),
+        isCorrect: i === correctIndex // true si c'est l'index de la réponse correcte
+      })).filter(a => a.text !== ""); // Exclure les réponses vides
+    }
+
+    //renitialiser le form
+    function clearForm() {
+      // Vider tous les champs de texte
+      document.getElementById("questionText").value = "";
+      document.getElementById("hint").value = "";
+      document.getElementById("difficulty").value = "";
+      document.getElementById("id_level").value = "";
+      
+      //vides les champs
+      document.querySelectorAll(".answer-text").forEach(el => el.value = "");
+      
+      // mettre la premier reponse selectionnee
+      document.querySelector('input[name="correctAnswer"][value="0"]').checked = true;
+      
+      // disactiver le mode edition
+      editingQuestionId = null;
+      currentQuestionAnswers = [];
+      resultEl.textContent = "";
+      
+      // suppretion de style lorsque l'edition
+      const formSection = document.getElementById("formSection");
+      formSection.style.border = "";
+      formSection.style.backgroundColor = "";
+      
+      // le boutton soumettre
+      const submitBtn = document.querySelector('button[onclick="submitQuestion()"]');
+      submitBtn.textContent = "Soumettre";
+    }
+
+    //recupiration et affichage des donnee de la liste
+    
+   //recupirer les donnee de la base
+    async function fetchQuestions() {
+      try {
+        const res = await fetch(`${URL}/rest/v1/question?select=*`, { 
+          headers: jsonHeaders() 
+        });
+        
+        if (!res.ok) throw new Error(`Erreur: ${res.status}`);
+        
+        // stocker les quest
+        questionsList = await safeJsonParse(res) || [];
+        
+        // afficher les questions
+        renderQuestions(questionsList);
+      } catch (error) {
+        console.error('Erreur récupération questions:', error);
+        resultEl.textContent = `❌ Erreur de chargement: ${error.message}`;
+      }
+    }
+
+    //affichage du tableu du ques
+    function renderQuestions(list) {
+      const container = document.getElementById("historyList");
+      container.innerHTML = ""; // vider le contenu existant
+      
+      // creer un element <li> pour chaque question
+      list.forEach(q => {
+        const li = document.createElement("li");
+        li.innerHTML = `
+          <b>${q.questionText}</b> 
+          <span>Difficulté: ${q.difficultyLevel} | Niveau: ${q.idLevel} | ${q.hintText || "sans indice"}</span>
+          <div>
+            <button onclick="editQuestion(${q.idQuestion})">✏️</button>
+            <button onclick="deleteQuestion(${q.idQuestion})">🗑️</button>
+          </div>`;
+        container.appendChild(li);
+      });
+    }
+
+    //filtrer les ques selon le terme de recherche
+    function filterQuestions() {
+      const term = document.getElementById("searchInput").value.toLowerCase();
+
+      const filtered = questionsList.filter(q => 
+        q.questionText.toLowerCase().includes(term)
+      );
+      
+      
+      renderQuestions(filtered);
+    }
+
+    //edition et supprstion
+    
+    //charger une ques pour modiif
+    async function editQuestion(id) {
+      try {
+        console.log("Édition de la question ID:", id);
+        
+        // recupiration des donnee
+        const [qResponse, answersResponse, correctResponse] = await Promise.all([
+         //ques
+          fetch(`${URL}/rest/v1/question?idQuestion=eq.${id}`, { headers: jsonHeaders() }),
+         //repo
+          fetch(`${URL}/rest/v1/reponse?idQuestion=eq.${id}&order=idAnswer`, { headers: jsonHeaders() }),
+         //repon corre
+          fetch(`${URL}/rest/v1/question_reponse?idQuestion=eq.${id}`, { headers: jsonHeaders() })
+        ]);
+
+        // virification que tout les requet reussit
+        if (!qResponse.ok) throw new Error(`Erreur récupération question: ${qResponse.status}`);
+        if (!answersResponse.ok) throw new Error(`Erreur récupération réponses: ${answersResponse.status}`);
+        if (!correctResponse.ok) throw new Error(`Erreur récupération réponses correctes: ${correctResponse.status}`);
+
+        // parser toutes les réponses JSON
+        const [question, answers, correctAnswers] = await Promise.all([
+          safeJsonParse(qResponse),
+          safeJsonParse(answersResponse),
+          safeJsonParse(correctResponse)
+        ]);
+
+        console.log("Données récupérées:", { question, answers, correctAnswers });
+
+        // virification que la question existe
+        if (!question || !question[0]) {
+          throw new Error("Question introuvable avec l'id " + id);
+        }
+
+        // stock pour le remplissage
+        currentQuestionAnswers = answers || [];
+
+        // pour remplire les champs
+        const questionData = question[0];
+        document.getElementById("questionText").value = questionData.questionText || "";
+        document.getElementById("hint").value = questionData.hintText || "";
+        document.getElementById("difficulty").value = questionData.difficultyLevel || "";
+        document.getElementById("id_level").value = questionData.idLevel || "";
+
+        // Récupérer tous les éléments du formulaire de réponses
+        const answerInputs = document.querySelectorAll(".answer-text");
+        const radioButtons = document.querySelectorAll("input[name='correctAnswer']");
+
+        // Réinitialiser tous les champs de réponses
+        answerInputs.forEach(input => input.value = "");
+        radioButtons.forEach(radio => radio.checked = false);
+
+        // pour la reponse correct
+        let correctAnswerId = null;
+        if (correctAnswers && correctAnswers.length > 0) {
+          correctAnswerId = correctAnswers[0].idAnswer;
+        }
+
+        // remplire les repo,ses
+        let correctAnswerIndex = 0; // par défaut la première
+        if (answers && answers.length > 0) {
+          answers.forEach((answer, index) => {
+            // Remplir le champ texte si il y a assez de slots
+            if (index < answerInputs.length) {
+              answerInputs[index].value = answer.answerText || "";
+              
+              // verification de la bonne reponsses
+              if (correctAnswerId && answer.idAnswer === correctAnswerId) {
+                correctAnswerIndex = index;
+              }
+            }
+          });
+        }
+
+        // Cocher la bonne réponse
+        if (correctAnswerIndex < radioButtons.length) {
+          radioButtons[correctAnswerIndex].checked = true;
+          console.log("Réponse correcte cochée à l'index:", correctAnswerIndex);
+        }
+
+        // Sécurité: si aucune réponse n'était cochée, cocher la première
+        if (!document.querySelector('input[name="correctAnswer"]:checked')) {
+          radioButtons[0].checked = true;
+          console.log("Aucune réponse correcte trouvée, première réponse cochée par défaut");
+        }
+
+        //mode d'edition
+        editingQuestionId = id; // id pour dire " mode d'edition"
+        resultEl.textContent = "✏️ Mode édition activé. Modifiez les champs et cliquez sur 'Mettre à jour'.";
+
+        // style de mode d'edition
+        const formSection = document.getElementById("formSection");
+        formSection.style.border = "3px solid #ff9800"; // Bordure orange
+        formSection.style.backgroundColor = "#fff3e0"; // Fond orange clair
+
+        // changer le texte du bouton
+        const submitBtn = document.querySelector('button[onclick="submitQuestion()"]');
+        submitBtn.textContent = "Mettre à jour";
+
+        // faire defiler vers le haut pour montrer le formulaire
+        window.scrollTo({ top: 0, behavior: "smooth" });
+
+      } catch (error) {
+        console.error("Erreur édition:", error);
+        resultEl.textContent = `❌ Erreur d'édition: ${error.message}`;
+      }
+    }
+
+    //la suppresio
+    async function deleteQuestion(id) {
+      // confirmation de suppretion
+      if (!confirm("Confirmez-vous la suppression de cette question et toutes ses données associées ?")) {
+        return;
+      }
+
+      try {
+        resultEl.textContent = "⏳ Suppression en cours...";
+        const headers = jsonHeaders();
+
+        // suppresion EN CASCADE 
+        // supprimer de table question-réponse
+        await fetch(`${URL}/rest/v1/question_reponse?idQuestion=eq.${id}`, {
+          method: "DELETE",
+          headers: headers
+        });
+
+        // supprimer de la table reponse
+        await fetch(`${URL}/rest/v1/reponse?idQuestion=eq.${id}`, {
+          method: "DELETE",
+          headers: headers
+        });
+
+        // supprer me question
+        const deleteQuestion = await fetch(`${URL}/rest/v1/question?idQuestion=eq.${id}`, {
+          method: "DELETE",
+          headers: headers
+        });
+
+        if (!deleteQuestion.ok) throw new Error(await deleteQuestion.text());
+
+        resultEl.textContent = "✅ Question supprimée avec succès !";
+        
+        // mettre a joure la lsite des question
+        fetchQuestions();
+
+      } catch (error) {
+        console.error('Erreur suppression:', error);
+        resultEl.textContent = `❌ Échec de la suppression: ${error.message}`;
+      }
+    }
+
+    
+    //vérification si le token est valise
+    async function checkToken() {
+      try {
+        // requet pour tester le token
+        const r = await fetch(`${URL}/rest/v1/question?limit=1`, { 
+          headers: jsonHeaders() 
+        });
+        return r.ok;
+      } catch {
+        return false; 
+      }
+    }
+
+    //déconnection
+    function logout() {
+      if (confirm("Voulez-vous vraiment vous déconnecter ?")) {
+        // suppresion les donnee d'authent stockee localmenet
+        localStorage.removeItem("token");
+        localStorage.removeItem("email");
+        
+        // vers la page de login
+        window.location.href = "dmin_login.html";
+        
+        // empecher le retpure en arrier apres la deconnection
+        history.pushState(null, null, "dmin_login.html");
+        window.addEventListener('popstate', function() {
+          history.pushState(null, null, "dmin_login.html");
+        });
+      }
+    }
+
+        
+    /**
+     * Fonction d'initialisation appelée quand le DOM ( document objet model) est chargé
+     * Configure les événements et vérifie l'authentification
+     */
+    document.addEventListener("DOMContentLoaded", async () => {
+      // ÉTAPE 1: VÉRIFICATION DE L'AUTHENTIFICATION
+      if (!token || !(await checkToken())) {
+        alert("⚠️ Token invalide. Veuillez vous reconnecter.");
+        logout(); // Utiliser la fonction de déconnexion sécurisée
+        return;
+      }
+      
+      // ÉTAPE 2: CHARGEMENT INITIAL DES DONNÉES
+      fetchQuestions(); // Charger toutes les questions existantes
+
+      // ÉTAPE 3: CONFIGURATION DES ÉVÉNEMENTS DE NAVIGATION
+      document.getElementById("navQuestions").addEventListener("click", () => {
+        window.location.href = `dmin_questions.html?token=${token}&email=${email}`;
+      });
+      
+      document.getElementById("navCartes").addEventListener("click", () => {
+        window.location.href = `admincarte.html?token=${token}&email=${email}`;
+      });
+      
+      // ÉTAPE 4: GESTION DE LA DÉCONNEXION
+      document.getElementById("logoutBtn").addEventListener("click", (e) => {
+        e.preventDefault(); // Empêcher le comportement par défaut du lien
+        logout(); // Appeler la fonction de déconnexion
+      });
+    });
+  </script>
+</body>
+</html>

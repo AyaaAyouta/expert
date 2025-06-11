@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="fr"> 
+<head>
+  <meta charset="UTF-8"> 
+  <title>Connexion </title> 
+  <link rel="stylesheet" href="dmin_login.css"> 
+</head>
+<body>
+
+
+
+<!--  form cnx -->
+<div class="login-container">
+  <h2>Bonjour Mensieur L'expert...</h2> 
+  <p class="subtitle">Accès réservé aux gardiens du savoir</p> 
+
+  
+  <input type="email" id="email" placeholder="Email Expert" />
+
+  
+  <div class="password-container">
+    <input type="password" id="password" placeholder="Mot de passe" />
+    
+    <span class="toggle-password" onclick="togglePassword()">&#128065;</span> <!-- 👁️ -->
+  </div>
+
+  
+  <button onclick="login()">Se connecter</button>
+</div>
+
+
+<script src="auth.js"></script>
+
+
+<script>
+  //l'url de supabase et le api pour les requettres
+  const URL = "https://sxrjryidhsxsrystzgsx.supabase.co";
+  const APIKEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN4cmpyeWlkaHN4c3J5c3R6Z3N4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDcwMDY4MjAsImV4cCI6MjA2MjU4MjgyMH0.AP87NoUy-F51rDVhe-OLqq4K73hsjtZqqNegA1S4GDQ";
+
+  
+  async function login() {
+    // recuperer lemail et mot de pass tappee par l'utilisateur
+    const email = document.getElementById("email").value;
+    const password = document.getElementById("password").value;
+
+    // Requete de vérificatioon de l'id et  mot de pass
+    const res = await fetch(`${URL}/auth/v1/token?grant_type=password`, { //authent par mot de pass
+      method: "POST", // Mmethode HTTP POST
+      headers: {
+        "Content-Type": "application/json", // sous forma de json
+        "apikey": APIKEY // cle api
+      },
+      body: JSON.stringify({ email, password }) // Donnees envoyee
+    });
+
+    // Attende  la repons et conversion en JSON
+    const data = await res.json();
+
+    //  retourne accee token
+    //  connection reussit
+    if (data.access_token) {
+      const token = data.access_token;
+      localStorage.setItem("token", token); // Save token local
+      window.location.href = "admin_dashboard.html"; 
+    } else {
+      alert("❌ Connexion échouée"); 
+    }
+  }
+
+  //
+  const passwordInput = document.getElementById("password"); // Recuperer  mot de pass
+  const togglePasswordBtn = document.querySelector(".toggle-password"); // icnon
+
+  
+  togglePasswordBtn.addEventListener('click', () => {
+    if (passwordInput.type === 'password') {
+      // Safficher
+      passwordInput.type = 'text';
+      togglePasswordBtn.innerHTML = '&#128488;'; 
+    } else {
+      // Smasquée
+      passwordInput.type = 'password';
+      togglePasswordBtn.innerHTML = '&#128065;'; 
+    }
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,91 @@
+body {
+  font-family: 'Georgia', serif;
+  background: linear-gradient(to right, #f7f1e3, #e0c097);
+  height: 100vh;
+  margin: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.login-container {
+  background-color: #fff8e7;
+  padding: 30px;
+  border-radius: 15px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+  width: 350px;
+  text-align: center;
+  border: 2px solid #b08968;
+}
+
+h2 {
+  color: #6c584c;
+  margin-bottom: 10px;
+}
+
+.subtitle {
+  font-size: 14px;
+  color: #8b6f47;
+  margin-bottom: 20px;
+  font-style: italic;
+}
+
+input {
+  width: 100%;
+  padding: 12px;
+  margin: 10px 0;
+  border: 1px solid #b08968;
+  border-radius: 8px;
+  background-color: #fffdf4;
+  font-size: 15px;
+}
+
+input:focus {
+  outline: none;
+  border-color: #8b6f47;
+  box-shadow: 0 0 5px rgba(139, 111, 71, 0.5);
+}
+
+button {
+  width: 100%;
+  padding: 12px;
+  background-color: #a47148;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  margin-top: 15px;
+  transition: background-color 0.3s;
+}
+
+button:hover {
+  background-color: #895737;
+}
+.password-container {
+  position: relative;
+}
+
+.password-container input {
+  width: 100%;
+  padding-right: 10px; /* espace pour l’icône */
+}
+
+.toggle-password {
+   position: absolute;
+  right: 0px;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: pointer;
+  font-size: 1.3rem;
+  color: #895737;
+  background: none;
+  border: none;
+  outline: none;
+  transition: color 0.3s ease;
+
+}
+.toggle-password:hover {
+  color:#895737;
+}

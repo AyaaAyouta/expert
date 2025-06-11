@@ -1,0 +1,153 @@
+
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Admin Panel</title>
+  <style>
+    body { font-family: Arial; max-width: 700px; margin: 40px auto; padding: 20px; background: #f9f9f9; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+    h1, h2 { text-align: center; }
+    input, textarea, button { width: 100%; margin: 10px 0; padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
+    button { background-color: #28a745; color: white; cursor: pointer; }
+    button:hover { background-color: #218838; }
+    #history { margin-top: 20px; background: #eee; padding: 10px; border-radius: 6px; }
+    li { margin-bottom: 5px; }
+  </style>
+</head>
+<body>
+<h1>🛠️ Panneau Admin</h1>
+<input type="email" id="email" placeholder="Email admin" />
+<input type="password" id="password" placeholder="Mot de passe" />
+<button onclick="login()">Se connecter</button>
+
+<div id="form" style="display:none">
+  <textarea id="questionText" placeholder="Question"></textarea>
+  <input id="hint" placeholder="Indice (optionnel)" />
+  <input type="number" id="difficulty" placeholder="Difficulté" />
+  <input type="number" id="id_level" placeholder="ID Niveau" />
+  <textarea id="answers" placeholder="Réponses (une par ligne, la 1ère est correcte)"></textarea>
+  <button onclick="submitQuestion()">Soumettre</button>
+  <button onclick="clearForm()">Réinitialiser</button>
+  <p id="result"></p>
+  <div id="history"><h2>📜 Questions</h2><ul id="historyList"></ul></div>
+</div>
+
+<h2>👥 Gestion des Joueurs</h2>
+<h3>Actifs</h3><ul id="activeUsersList"></ul>
+<h3>Bannis</h3><ul id="bannedUsersList"></ul>
+
+<script>
+const URL = "https://sxrjryidhsxsrystzgsx.supabase.co";
+const APIKEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN4cmpyeWlkaHN4c3J5c3R6Z3N4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDcwMDY4MjAsImV4cCI6MjA2MjU4MjgyMH0.AP87NoUy-F51rDVhe-OLqq4K73hsjtZqqNegA1S4GDQ";
+let token = "", email = "";
+
+function jsonHeaders() {
+  return { "Content-Type": "application/json", "apikey": APIKEY, "Authorization": `Bearer ${token}`, "Prefer": "return=representation" };
+}
+
+async function login() {
+  email = document.getElementById("email").value;
+  const password = document.getElementById("password").value;
+
+  const res = await fetch(`${URL}/auth/v1/token?grant_type=password`, {
+    method: "POST", headers: { "Content-Type": "application/json", "apikey": APIKEY },
+    body: JSON.stringify({ email, password })
+  });
+  const data = await res.json();
+  if (data.access_token) {
+    token = data.access_token;
+    const check = await fetch(`${URL}/rest/v1/admin?select=emailAdmin&emailAdmin=eq.${encodeURIComponent(email)}`, { headers: jsonHeaders() });
+    const admins = await check.json();
+    if (admins.length > 0) {
+      document.getElementById("form").style.display = "block";
+      fetchQuestions(); fetchUsers();
+    } else alert("⛔ Accès refusé : Non administrateur.");
+  } else {
+    alert("❌ Connexion échouée");
+  }
+}
+
+function clearForm() {
+  ["questionText", "hint", "difficulty", "id_level", "answers"].forEach(id => document.getElementById(id).value = "");
+  document.getElementById("result").textContent = "";
+}
+
+async function submitQuestion() {
+  const q = document.getElementById("questionText").value;
+  const h = document.getElementById("hint").value;
+  const d = parseInt(document.getElementById("difficulty").value);
+  const l = parseInt(document.getElementById("id_level").value);
+  const answers = document.getElementById("answers").value.split("\n").filter(Boolean);
+
+  const qRes = await fetch(`${URL}/rest/v1/question`, {
+    method: "POST", headers: jsonHeaders(), body: JSON.stringify({ questionText: q, hintText: h, difficultyLevel: d, idLevel: l })
+  });
+  if (!qRes.ok) return document.getElementById("result").textContent = "Erreur ajout question";
+  const qData = await qRes.json(), qid = qData[0].idQuestion;
+
+  for (let i = 0; i < answers.length; i++) {
+    const aRes = await fetch(`${URL}/rest/v1/reponse`, {
+      method: "POST", headers: jsonHeaders(), body: JSON.stringify({ answerText: answers[i] })
+    });
+    const aData = await aRes.json(), aid = aData[0].idAnswer;
+    if (i === 0) {
+      await fetch(`${URL}/rest/v1/question_reponse`, {
+        method: "POST", headers: jsonHeaders(), body: JSON.stringify({ idQuestion: qid, idAnswer: aid })
+      });
+    }
+  }
+
+  document.getElementById("result").textContent = "✅ Question ajoutée";
+  fetchQuestions();
+}
+
+async function fetchQuestions() {
+  const res = await fetch(`${URL}/rest/v1/question?select=idQuestion,questionText,hintText`, { headers: jsonHeaders() });
+  const questions = await res.json();
+  const list = document.getElementById("historyList");
+  list.innerHTML = "";
+  questions.forEach(q => {
+    const li = document.createElement("li");
+    li.innerHTML = `<b>${q.questionText}</b> (${q.hintText || "sans indice"}) <button onclick="deleteQuestion(${q.idQuestion})">🗑️</button>`;
+    list.appendChild(li);
+  });
+}
+
+async function deleteQuestion(id) {
+  if (!confirm("Supprimer cette question ?")) return;
+  await fetch(`${URL}/rest/v1/question_reponse?idQuestion=eq.${id}`, { method: "DELETE", headers: jsonHeaders() });
+  await fetch(`${URL}/rest/v1/question?idQuestion=eq.${id}`, { method: "DELETE", headers: jsonHeaders() });
+  fetchQuestions();
+}
+
+async function fetchUsers() {
+  const [res, bRes] = await Promise.all([
+    fetch(`${URL}/rest/v1/joueur?select=pseudoJoueur,emailJoueur`, { headers: jsonHeaders() }),
+    fetch(`${URL}/rest/v1/joueur_banis?select=email_joueur`, { headers: jsonHeaders() })
+  ]);
+  const users = await res.json(), bans = await bRes.json(), banned = bans.map(b => b.email_joueur);
+  const activeList = document.getElementById("activeUsersList"), bannedList = document.getElementById("bannedUsersList");
+  activeList.innerHTML = ""; bannedList.innerHTML = "";
+  users.forEach(u => {
+    const li = document.createElement("li");
+    li.textContent = `${u.pseudoJoueur} (${u.emailJoueur})`;
+    const btn = document.createElement("button");
+    btn.textContent = banned.includes(u.emailJoueur) ? "Débannir" : "Bannir";
+    btn.onclick = () => banned.includes(u.emailJoueur) ? unbanUser(u.emailJoueur) : banUser(u.emailJoueur);
+    li.appendChild(btn);
+    (banned.includes(u.emailJoueur) ? bannedList : activeList).appendChild(li);
+  });
+}
+
+async function banUser(email) {
+  await fetch(`${URL}/rest/v1/joueur_banis`, { method: "POST", headers: jsonHeaders(), body: JSON.stringify({ email_joueur: email }) });
+  fetchUsers();
+}
+
+async function unbanUser(email) {
+  await fetch(`${URL}/rest/v1/joueur_banis?email_joueur=eq.${encodeURIComponent(email)}`, { method: "DELETE", headers: jsonHeaders() });
+  fetchUsers();
+}
+</script>
+</body>
+</html>

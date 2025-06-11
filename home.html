@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Accueil Super Admin</title>
+   <link rel="stylesheet" href="home.css">
+  
+</head>
+<body>
+
+  <h1>Bienvenu ...</h1>
+
+  <div class="btn-group">
+    <button class="btn" onclick="navigateTo('joueurs.html')">👥 Gestion des joueurs</button>
+    <button class="btn" onclick="navigateTo('admins.html')">🛠️ Gestion des experts</button>
+  </div>
+
+  <button class="btn logout-btn" onclick="logout()">Déconnexion</button>
+
+  <script>
+    function navigateTo(page) {
+      window.location.href = page;
+    }
+
+    function logout() {
+      localStorage.clear();
+      window.location.href = "login.html";
+    }
+  </script>
+  
+</body>
+</html>

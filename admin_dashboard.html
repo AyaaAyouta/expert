@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="fr"> 
+<head>
+  <meta charset="UTF-8"> 
+  <title>Tableau de bord Expert</title> 
+  <link rel="stylesheet" href="dmin_dashboard.css"> 
+</head> 
+
+<body>
+  <div class="login-container">
+    <h2>Bienvenue Expert</h2>
+    <p class="subtitle">Choisissez une section à gérer</p>
+
+    
+    <button onclick="goToQuestions()">📝 Gérer les Questions</button>
+    <button onclick="goToCartes()">🃏 Gérer les Cartes</button>
+    <button onclick="logout()">🚪 Déconnexion</button>
+  </div>
+
+  <!-- fichier  d'auth -->
+  <script src="auth.js"></script>
+
+  <script>
+    // Recuperation  parametres 
+    const params = new URLSearchParams(window.location.search);
+    const email = params.get("email"); // Recuperation email de url
+
+    // verifier esq token stoké dans local
+    function checkAuth() {
+      return localStorage.getItem("token");
+    }
+
+    // recupirer token
+    const token = checkAuth();
+
+    // Si c'est pas le token
+    if (!token) {
+      alert("Token manquant. Veuillez vous reconnecter.");
+      window.location.href = "dmin_login.html";
+    }
+
+    // vers la page de questions
+    function goToQuestions() {
+      window.location.href = `dmin_questions.html?token=${token}&email=${encodeURIComponent(email)}&mode=question`;
+    }
+
+    // page de carts
+    function goToCartes() {
+      window.location.href = `admincarte.html?token=${token}&email=${encodeURIComponent(email)}&mode=carte`;
+    }
+
+    
+    function logout() {
+      localStorage.removeItem("token"); // suppremer le token 
+      window.location.href = "dmin_login.html"; //vers la page de connection
+    }
+  </script>
+</body>
+</html>
